@@ -259,10 +259,8 @@ class ToiletClient:
         if led is not None:
             self.state.night_led = _as_int(led) == 1
 
-        self._sleep()
-        auto_led, _ = self._get_one(PROP_AUTO_LED)
-        if auto_led is not None:
-            self.state.auto_led = _as_int(auto_led)
+        # auto_led 在本机上经常 user ack timeout，跳过以免拖慢全量轮询。
+        # self._sleep(); auto_led, _ = self._get_one(PROP_AUTO_LED) ...
 
         wash_props = (PROP_STATUS_TUNWASH, PROP_STATUS_WOMENWASH, PROP_STATUS_WARMDRY)
         prop = wash_props[self._wash_rotate % len(wash_props)]
@@ -297,6 +295,13 @@ class ToiletClient:
     def require_seating(self) -> None:
         if not self.state.seating:
             raise RuntimeError("请先着坐后再启动清洗或烘干")
+
+    def refresh_night_led(self) -> None:
+        """Re-read status_led after a night-light command."""
+        led, _ = self._get_one(PROP_STATUS_LED)
+        if led is not None:
+            self.state.night_led = _as_int(led) == 1
+        self.state.updated_at = time.time()
 
     def set_seat_heat(self, on: bool) -> None:
         if on:

@@ -46,7 +46,7 @@ class MqttBridge:
             "manufacturer": "XiaoJingXi",
             "model": model,
             "connections": [["mac", mac]] if mac else [],
-            "sw_version": "0.1.2",
+            "sw_version": "0.1.3",
         }
         self._client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,

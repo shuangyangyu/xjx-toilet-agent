@@ -38,7 +38,8 @@ class AgentService:
             on_command=self._on_command,
         )
         self._stop = threading.Event()
-        self._cmd_lock = threading.Lock()
+        # Serializes all miIO access + MQTT publish of toilet state.
+        self._device_lock = threading.Lock()
         self._last_published: ToiletState | None = None
 
     def run_forever(self) -> None:
@@ -64,15 +65,16 @@ class AgentService:
             now = time.monotonic()
             try:
                 if now >= next_full:
-                    state = self.toilet.poll_full()
+                    with self._device_lock:
+                        state = self.toilet.poll_full()
+                        self._publish(state)
                     next_full = now + full_iv
                     next_seating = now + seating_iv
-                    self._publish(state)
                 elif now >= next_seating:
-                    state = self.toilet.poll_seating()
+                    with self._device_lock:
+                        state = self.toilet.poll_seating()
+                        self._publish(state)
                     next_seating = now + seating_iv
-                    # Always publish so network quality sensors stay fresh.
-                    self._publish(state)
             except Exception:  # noqa: BLE001
                 log.exception("poll loop error")
 
@@ -89,15 +91,11 @@ class AgentService:
         self.mqtt.publish_state(state)
         self._last_published = replace(state)
 
-    def _refresh_after_command(self) -> None:
-        time.sleep(0.8)
-        self._publish(self.toilet.poll_full())
-
     def _on_command(self, entity: str, payload: str) -> None:
         raw = payload.strip()
         upper = raw.upper()
         want_on = upper in {"ON", "1", "TRUE"}
-        with self._cmd_lock:
+        with self._device_lock:
             try:
                 if entity == "flush" and upper in {"PRESS", "ON", "1", "TRUE"}:
                     self.toilet.flush()
@@ -139,4 +137,13 @@ class AgentService:
                 return
 
             log.info("command ok entity=%s payload=%s", entity, payload)
-            self._refresh_after_command()
+            # Optimistic publish first so HA UI does not snap back to stale OFF.
+            self._publish(self.toilet.state)
+            time.sleep(0.8)
+            # Light refresh: seating + night led only (avoid slow/failing props).
+            if entity == "night_led":
+                self.toilet.poll_seating()
+                self.toilet.refresh_night_led()
+                self._publish(self.toilet.state)
+            else:
+                self._publish(self.toilet.poll_full())
