@@ -7,7 +7,8 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from miio import Device, DeviceException
+from miio.device import Device
+from miio.exceptions import DeviceException
 
 log = logging.getLogger(__name__)
 logging.getLogger("miio.miioprotocol").setLevel(logging.CRITICAL)
