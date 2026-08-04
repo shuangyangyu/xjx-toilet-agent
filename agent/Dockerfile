@@ -7,12 +7,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/src
 
 COPY requirements.txt .
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc \
-    && pip install --no-cache-dir -r requirements.txt \
-    && apt-get purge -y gcc \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir \
+        "paho-mqtt>=2.1.0,<3" \
+        "pydantic-settings>=2.2.0" \
+        "pycryptodome>=3.20.0" \
+        "cryptography>=35" \
+        "construct>=2.10.56,<3" \
+        attrs \
+        "PyYAML>=5,<7" \
+        "tqdm>=4,<5" \
+        "appdirs>=1,<2" \
+        "defusedxml>=0,<1" \
+        pytz \
+        python-dateutil \
+        croniter \
+    && pip install --no-cache-dir --no-deps "python-miio>=0.5.12"
 
 COPY src ./src
 

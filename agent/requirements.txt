@@ -1,4 +1,14 @@
 paho-mqtt>=2.1.0,<3
 pydantic-settings>=2.2.0
-python-miio>=0.5.12
 pycryptodome>=3.20.0
+cryptography>=35
+construct>=2.10.56,<3
+attrs
+PyYAML>=5,<7
+tqdm>=4,<5
+appdirs>=1,<2
+defusedxml>=0,<1
+pytz
+python-dateutil
+# Device(host,token) 不需要 netifaces/zeroconf；用 --no-deps 安装避免编译
+python-miio>=0.5.12
