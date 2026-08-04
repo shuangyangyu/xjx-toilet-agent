@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -122,6 +123,12 @@ class ToiletState:
     moving_w: bool = False
     massage_w: bool = False
     fan_temp: int | None = None
+    # Network quality (miIO seating RTT window)
+    net_rtt_ms: int | None = None
+    net_rtt_avg_ms: int | None = None
+    net_success_pct: float | None = None
+    net_fail_streak: int = 0
+    net_quality: str = "unknown"
     updated_at: float = field(default_factory=time.time)
 
     def to_mqtt(self) -> dict[str, Any]:
@@ -133,25 +140,66 @@ class ToiletState:
 class ToiletClient:
     """Poll / command XiaoJingXi toilet over miIO."""
 
-    def __init__(self, host: str, token: str, *, timeout: float = 8.0, poll_gap: float = 0.35):
+    def __init__(
+        self,
+        host: str,
+        token: str,
+        *,
+        timeout: float = 8.0,
+        poll_gap: float = 0.35,
+        quality_window: int = 60,
+    ):
         self.device = Device(host, token, timeout=timeout)
         self.poll_gap = poll_gap
         self._fail_streak = 0
         self._wash_rotate = 0
         self.state = ToiletState()
+        self._quality_window = max(10, quality_window)
+        # Recent seating polls: (ok, rtt_ms)
+        self._recent: deque[tuple[bool, float | None]] = deque(maxlen=self._quality_window)
 
     def _sleep(self) -> None:
         time.sleep(self.poll_gap)
 
-    def _get_one(self, prop: str) -> Any | None:
+    def _get_one(self, prop: str) -> tuple[Any | None, float | None]:
+        """Fetch one property; return (value, rtt_ms)."""
+        t0 = time.perf_counter()
         try:
             raw = self.device.get_properties([prop])
         except DeviceException as err:
             log.debug("prop %s failed: %s", prop, err)
-            return None
+            return None, None
+        rtt_ms = (time.perf_counter() - t0) * 1000.0
         if not isinstance(raw, list) or not raw:
-            return None
-        return raw[0]
+            return None, rtt_ms
+        return raw[0], rtt_ms
+
+    def _record_quality(self, ok: bool, rtt_ms: float | None) -> None:
+        self._recent.append((ok, rtt_ms if ok else None))
+        total = len(self._recent)
+        ok_n = sum(1 for success, _ in self._recent if success)
+        success_pct = round(100.0 * ok_n / total, 1) if total else None
+        rtts = [r for success, r in self._recent if success and r is not None]
+        avg = int(round(sum(rtts) / len(rtts))) if rtts else None
+
+        if ok and rtt_ms is not None:
+            self.state.net_rtt_ms = int(round(rtt_ms))
+        self.state.net_rtt_avg_ms = avg
+        self.state.net_success_pct = success_pct
+        self.state.net_fail_streak = self._fail_streak
+        self.state.net_quality = self._grade(success_pct, avg, self._fail_streak)
+
+    @staticmethod
+    def _grade(success_pct: float | None, avg_ms: int | None, fail_streak: int) -> str:
+        if fail_streak >= 5 or success_pct is None:
+            return "offline"
+        if success_pct < 50:
+            return "poor"
+        if success_pct < 80 or (avg_ms is not None and avg_ms > 1500):
+            return "fair"
+        if success_pct < 95 or (avg_ms is not None and avg_ms > 600):
+            return "good"
+        return "excellent"
 
     def send(self, method: str, params: list[Any] | None = None) -> None:
         params = params or []
@@ -164,51 +212,55 @@ class ToiletClient:
 
     def poll_seating(self) -> ToiletState:
         """Fast path: only seating."""
-        seating = self._get_one(PROP_SEATING)
+        seating, rtt = self._get_one(PROP_SEATING)
         if seating is None:
             self._fail_streak += 1
             if self._fail_streak >= 5:
                 self.state.online = False
+            self._record_quality(False, None)
             self.state.updated_at = time.time()
             return self.state
 
         self._fail_streak = 0
         self.state.online = True
         self.state.seating = _as_int(seating) == 1
+        self._record_quality(True, rtt)
         self.state.updated_at = time.time()
         return self.state
 
     def poll_full(self) -> ToiletState:
         """Slower path: seating + other properties (rotated wash vector)."""
-        seating = self._get_one(PROP_SEATING)
+        seating, rtt = self._get_one(PROP_SEATING)
         if seating is None:
             self._fail_streak += 1
             if self._fail_streak >= 5:
                 self.state.online = False
+            self._record_quality(False, None)
             self.state.updated_at = time.time()
             return self.state
 
         self._fail_streak = 0
         self.state.online = True
         self.state.seating = _as_int(seating) == 1
+        self._record_quality(True, rtt)
 
         self._sleep()
-        seat_temp = self._get_one(PROP_SEAT_TEMP)
+        seat_temp, _ = self._get_one(PROP_SEAT_TEMP)
         if seat_temp is not None:
             self.state.seat_temp = _as_int(_scalar(seat_temp))
 
         self._sleep()
-        seatheat = self._get_one(PROP_STATUS_SEATHEAT)
+        seatheat, _ = self._get_one(PROP_STATUS_SEATHEAT)
         if seatheat is not None:
             self.state.seat_heat = _as_int(seatheat) == 1
 
         self._sleep()
-        led = self._get_one(PROP_STATUS_LED)
+        led, _ = self._get_one(PROP_STATUS_LED)
         if led is not None:
             self.state.night_led = _as_int(led) == 1
 
         self._sleep()
-        auto_led = self._get_one(PROP_AUTO_LED)
+        auto_led, _ = self._get_one(PROP_AUTO_LED)
         if auto_led is not None:
             self.state.auto_led = _as_int(auto_led)
 
@@ -216,7 +268,7 @@ class ToiletClient:
         prop = wash_props[self._wash_rotate % len(wash_props)]
         self._wash_rotate += 1
         self._sleep()
-        value = self._get_one(prop)
+        value, _ = self._get_one(prop)
         if value is not None:
             if prop == PROP_STATUS_TUNWASH:
                 tun = _parse_wash(value)

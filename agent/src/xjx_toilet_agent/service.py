@@ -69,16 +69,10 @@ class AgentService:
                     next_seating = now + seating_iv
                     self._publish(state)
                 elif now >= next_seating:
-                    prev_seat = self.toilet.state.seating
-                    prev_online = self.toilet.state.online
                     state = self.toilet.poll_seating()
                     next_seating = now + seating_iv
-                    if (
-                        self._last_published is None
-                        or state.seating != prev_seat
-                        or state.online != prev_online
-                    ):
-                        self._publish(state)
+                    # Always publish so network quality sensors stay fresh.
+                    self._publish(state)
             except Exception:  # noqa: BLE001
                 log.exception("poll loop error")
 

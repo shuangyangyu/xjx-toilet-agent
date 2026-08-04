@@ -46,7 +46,7 @@ class MqttBridge:
             "manufacturer": "XiaoJingXi",
             "model": model,
             "connections": [["mac", mac]] if mac else [],
-            "sw_version": "0.1.0",
+            "sw_version": "0.1.1",
         }
         self._client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
@@ -167,17 +167,22 @@ class MqttBridge:
             self._publish_json(self._disc("binary_sensor", key), cfg, retain=True)
 
         sensors = [
-            ("seat_temp", "座温档位", "mdi:thermometer"),
-            ("water_temp_t", "臀洗水温", "mdi:thermometer-water"),
-            ("water_strong_t", "臀洗水量", "mdi:water"),
-            ("water_pos_t", "臀洗位置", "mdi:arrow-expand-vertical"),
-            ("water_temp_w", "妇洗水温", "mdi:thermometer-water"),
-            ("water_strong_w", "妇洗水量", "mdi:water"),
-            ("water_pos_w", "妇洗位置", "mdi:arrow-expand-vertical"),
-            ("fan_temp", "烘干温度", "mdi:fan"),
+            ("seat_temp", "座温档位", "mdi:thermometer", None, None),
+            ("water_temp_t", "臀洗水温", "mdi:thermometer-water", None, None),
+            ("water_strong_t", "臀洗水量", "mdi:water", None, None),
+            ("water_pos_t", "臀洗位置", "mdi:arrow-expand-vertical", None, None),
+            ("water_temp_w", "妇洗水温", "mdi:thermometer-water", None, None),
+            ("water_strong_w", "妇洗水量", "mdi:water", None, None),
+            ("water_pos_w", "妇洗位置", "mdi:arrow-expand-vertical", None, None),
+            ("fan_temp", "烘干温度", "mdi:fan", None, None),
+            ("net_rtt_ms", "网络延迟", "mdi:timer-outline", "ms", "measurement"),
+            ("net_rtt_avg_ms", "网络平均延迟", "mdi:timer-sand", "ms", "measurement"),
+            ("net_success_pct", "网络成功率", "mdi:percent-outline", "%", "measurement"),
+            ("net_fail_streak", "网络连续失败", "mdi:alert-circle-outline", None, "measurement"),
+            ("net_quality", "网络质量", "mdi:wifi", None, None),
         ]
-        for key, name, icon in sensors:
-            cfg = {
+        for key, name, icon, unit, state_class in sensors:
+            cfg: dict[str, Any] = {
                 **avail,
                 "name": name,
                 "unique_id": f"xjx_toilet_{self.slug}_{key}",
@@ -185,6 +190,10 @@ class MqttBridge:
                 "value_template": f"{{{{ value_json.{key} }}}}",
                 "icon": icon,
             }
+            if unit:
+                cfg["unit_of_measurement"] = unit
+            if state_class:
+                cfg["state_class"] = state_class
             self._publish_json(self._disc("sensor", key), cfg, retain=True)
 
         switches = [
