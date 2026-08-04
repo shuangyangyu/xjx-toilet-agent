@@ -22,6 +22,8 @@ RUN pip install --no-cache-dir \
         python-dateutil \
         croniter \
         click \
+        ifaddr \
+        zeroconf \
     && pip install --no-cache-dir --no-deps "python-miio>=0.5.12"
 
 COPY src ./src
