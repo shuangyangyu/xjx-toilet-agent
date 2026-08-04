@@ -46,7 +46,7 @@ class MqttBridge:
             "manufacturer": "XiaoJingXi",
             "model": model,
             "connections": [["mac", mac]] if mac else [],
-            "sw_version": "0.1.1",
+            "sw_version": "0.1.2",
         }
         self._client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
@@ -124,7 +124,8 @@ class MqttBridge:
         payload = state.to_mqtt()
         self._last_payload = payload
         self._publish_json(self.state_topic, payload, retain=True)
-        self.publish_availability("online" if state.online else "offline")
+        # Availability = agent↔MQTT 链路，不要和马桶 miIO 通断绑在一起。
+        self.publish_availability("online")
 
     def _disc(self, component: str, object_id: str) -> str:
         return f"{self.discovery_prefix}/{component}/xjx_toilet_{self.slug}_{object_id}/config"
@@ -144,6 +145,7 @@ class MqttBridge:
         state = self.state_topic
 
         binaries = [
+            ("online", "设备在线", "connectivity", "mdi:lan-connect"),
             ("seating", "着坐", "occupancy", "mdi:toilet"),
             ("tun_wash", "臀洗进行中", None, "mdi:shower-head"),
             ("women_wash", "妇洗进行中", None, "mdi:shower-head"),
