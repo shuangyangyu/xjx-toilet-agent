@@ -1,0 +1,13 @@
+services:
+  xjx-toilet-agent:
+    build: ./agent
+    container_name: xjx-toilet-agent
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - ./agent/.env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
