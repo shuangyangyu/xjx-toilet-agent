@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir \
         pytz \
         python-dateutil \
         croniter \
+        click \
     && pip install --no-cache-dir --no-deps "python-miio>=0.5.12"
 
 COPY src ./src
