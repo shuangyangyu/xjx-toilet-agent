@@ -10,5 +10,9 @@ appdirs>=1,<2
 defusedxml>=0,<1
 pytz
 python-dateutil
-# Device(host,token) 不需要 netifaces/zeroconf；用 --no-deps 安装避免编译
+croniter
+click
+ifaddr
+zeroconf
+# Device(host,token) 不需要 netifaces；Dockerfile 里用 --no-deps 安装
 python-miio>=0.5.12
