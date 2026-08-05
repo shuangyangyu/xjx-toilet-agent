@@ -108,6 +108,8 @@ class AgentService:
                 elif entity == "seat_heat":
                     self.toilet.set_seat_heat(want_on)
                 elif entity == "night_led":
+                    self.toilet.hold_night_led(want_on)
+                    self._publish(self.toilet.state)
                     self.toilet.set_night_led(want_on)
                 elif entity == "tun_wash":
                     self.toilet.set_tun_wash(want_on)
@@ -137,13 +139,8 @@ class AgentService:
                 return
 
             log.info("command ok entity=%s payload=%s", entity, payload)
-            # Optimistic publish first so HA UI does not snap back to stale OFF.
             self._publish(self.toilet.state)
-            time.sleep(0.8)
-            # Light refresh: seating + night led only (avoid slow/failing props).
             if entity == "night_led":
-                self.toilet.poll_seating()
-                self.toilet.refresh_night_led()
-                self._publish(self.toilet.state)
-            else:
-                self._publish(self.toilet.poll_full())
+                return
+            time.sleep(0.8)
+            self._publish(self.toilet.poll_full())

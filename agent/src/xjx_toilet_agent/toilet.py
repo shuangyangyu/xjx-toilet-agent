@@ -157,6 +157,8 @@ class ToiletClient:
         self._quality_window = max(10, quality_window)
         # Recent seating polls: (ok, rtt_ms)
         self._recent: deque[tuple[bool, float | None]] = deque(maxlen=self._quality_window)
+        self._night_led_hold_until = 0.0
+        self._night_led_hold_value: bool | None = None
 
     def _sleep(self) -> None:
         time.sleep(self.poll_gap)
@@ -257,7 +259,7 @@ class ToiletClient:
         self._sleep()
         led, _ = self._get_one(PROP_STATUS_LED)
         if led is not None:
-            self.state.night_led = _as_int(led) == 1
+            self._apply_night_led(_as_int(led) == 1)
 
         # auto_led 在本机上经常 user ack timeout，跳过以免拖慢全量轮询。
         # self._sleep(); auto_led, _ = self._get_one(PROP_AUTO_LED) ...
@@ -296,12 +298,20 @@ class ToiletClient:
         if not self.state.seating:
             raise RuntimeError("请先着坐后再启动清洗或烘干")
 
-    def refresh_night_led(self) -> None:
-        """Re-read status_led after a night-light command."""
-        led, _ = self._get_one(PROP_STATUS_LED)
-        if led is not None:
-            self.state.night_led = _as_int(led) == 1
+    def hold_night_led(self, on: bool, *, seconds: float = 25.0) -> None:
+        """Keep optimistic night-led state until device catch-up or timeout."""
+        self.state.night_led = on
+        self._night_led_hold_value = on
+        self._night_led_hold_until = time.monotonic() + seconds
         self.state.updated_at = time.time()
+
+    def _apply_night_led(self, reported: bool) -> None:
+        if time.monotonic() < self._night_led_hold_until:
+            if reported == self._night_led_hold_value:
+                self._night_led_hold_until = 0.0
+                self.state.night_led = reported
+            return
+        self.state.night_led = reported
 
     def set_seat_heat(self, on: bool) -> None:
         if on:
@@ -312,13 +322,14 @@ class ToiletClient:
         self.state.seat_heat = on
 
     def set_night_led(self, on: bool) -> None:
+        # 关灯先发 work_night_led，避免 set_auto_led 超时把关灯拖住。
+        self.send(METHOD_WORK_NIGHT_LED, [1 if on else 0])
         if not on:
             try:
                 self.send(METHOD_SET_AUTO_LED, [0])
             except RuntimeError:
                 log.debug("set_auto_led skipped")
-        self.send(METHOD_WORK_NIGHT_LED, [1 if on else 0])
-        self.state.night_led = on
+        self.hold_night_led(on)
 
     def set_tun_wash(self, on: bool) -> None:
         if on:
