@@ -2,7 +2,10 @@
 
 独立 Docker 服务：本地 miIO **双速轮询**小鲸洗马桶，经 MQTT Discovery 接入 Home Assistant。
 
-协议与指令来自 [xiaomi_miio_toilet](https://github.com/shuangyangyu/xiaomi_miio_toilet)。本服务把轮询从 HA Core 里拆出来，避免 UDP 超时拖累 HA。
+> 旧 HA 集成 `xjx_toilet` 已放弃并冻结：  
+> https://github.com/shuangyangyu/xiaomi_miio_toilet → **新地址** https://github.com/shuangyangyu/xjx-toilet-agent
+
+协议与指令曾记在旧仓 `docs/miio_commands.md`。本服务把轮询从 HA Core 里拆出来，避免 UDP 超时拖累 HA。
 
 ## 为什么独立
 
@@ -26,8 +29,11 @@
                          (MQTT Discovery 自动出实体)
 ```
 
-建议部署在 **241**（`network_mode: host`，与马桶同网段）。  
+建议部署在 **241** `docker/smarthome/xjx-toilet-agent/`（`network_mode: host`，与马桶同网段）。  
+对照表：[`../smarthome/`](../smarthome/)。  
 上线后建议在 HA **禁用/删除** 原 `xjx_toilet` 集成，避免双轮询抢设备。
+
+马桶只连公卫吸顶 AX61：[`钉公卫顶棚SSID.md`](./钉公卫顶棚SSID.md)（ER Mini AC 单独 SSID）。
 
 ## 快速开始
 
@@ -81,13 +87,20 @@ MQTT Discovery 前缀设备名默认「小鲸洗马桶」，包括：
 
 | 实体 | 含义 |
 |------|------|
-| 网络质量 | `excellent` / `good` / `fair` / `poor` / `offline` |
-| 网络延迟 | 最近一次成功着坐轮询 RTT（ms） |
-| 网络平均延迟 | 近 60 次成功轮询平均 RTT |
-| 网络成功率 | 近 60 次轮询成功百分比 |
-| 网络连续失败 | 当前连续失败次数（≥5 判 offline） |
+| miIO 质量 | `excellent` / `good` / `fair` / `poor` / `offline`（问答 RTT，不是 Wi‑Fi） |
+| 网络延迟 / 平均延迟 | 着坐轮询 RTT（ms） |
+| 网络成功率 / 连续失败 | 近 60 次轮询 |
+| **WiFi 信号** | `miIO.info` 的 RSSI（dBm），约 30s 采一次 |
+| **WiFi 质量** | RSSI 分级：≥-50 excellent · ≥-60 good · ≥-70 fair · 更差 poor |
+| WiFi SSID / BSSID / 信道 | 当前所连 AP |
 
-评级大致：成功率≥95% 且延迟≤600ms → excellent；再差依次 good / fair / poor。
+miIO 评级：成功率≥95% 且延迟≤600ms → excellent。  
+Wi‑Fi 以 RSSI 为准，不要和 miIO 质量混为一谈。
+
+## Lovelace 卡片
+
+HA 自定义卡片 `custom:xjx-toilet-card`：公卫马桶遥控（冲水 / 清洗 / 档位 / 夜灯）。  
+说明：[`hass/docs/lovelace_card.md`](./hass/docs/lovelace_card.md)。
 
 ## 目录
 
@@ -95,9 +108,6 @@ MQTT Discovery 前缀设备名默认「小鲸洗马桶」，包括：
 xjx-toilet-agent/
 ├── docker-compose.yml
 ├── agent/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── .env.example
-│   └── src/xjx_toilet_agent/
+├── hass/www/xjx-toilet-card.js
 └── README.md
 ```
